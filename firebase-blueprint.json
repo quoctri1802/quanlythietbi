@@ -54,6 +54,19 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["deviceId", "tenantId", "userId", "status", "timestamp"]
+    },
+    "AIReport": {
+      "title": "AIReport",
+      "description": "Historical AI analysis results for a device.",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "riskPercentage": { "type": "number" },
+        "prediction": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deviceId", "tenantId", "riskPercentage", "timestamp"]
     }
   },
   "firestore": {
@@ -72,6 +85,10 @@
     "/logs/{logId}": {
       "schema": "Log",
       "description": "Device status history."
+    },
+    "/ai_reports/{reportId}": {
+      "schema": "AIReport",
+      "description": "Historical AI analysis results."
     }
   }
 }

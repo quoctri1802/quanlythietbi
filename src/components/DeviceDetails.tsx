@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { doc, onSnapshot, query, collection, where, addDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
-import { useAuth, Device, Log } from "../App";
+import { useAuth, Device, Log, AIReport } from "../App";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { Activity, CheckCircle, AlertTriangle, X, BrainCircuit, History, ArrowLeft, Download, Clock } from "lucide-react";
+import { Activity, CheckCircle, AlertTriangle, X, BrainCircuit, History, ArrowLeft, Download, Clock, Info, TrendingUp } from "lucide-react";
 import { cn } from "../lib/utils";
+import { motion, AnimatePresence } from "motion/react";
 import { QRCodeCanvas } from "qrcode.react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import axios from "axios";
 
 const DeviceDetails = () => {
@@ -17,9 +19,11 @@ const DeviceDetails = () => {
   const qrRef = useRef<HTMLDivElement>(null);
   const [device, setDevice] = useState<Device | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
+  const [aiHistory, setAiHistory] = useState<AIReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [note, setNote] = useState("");
+  const [confirmStatus, setConfirmStatus] = useState<"normal" | "warning" | "broken" | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
@@ -56,7 +60,15 @@ const DeviceDetails = () => {
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
       setLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Log).sort((a, b) => b.timestamp?.seconds - a.timestamp?.seconds));
     });
-    return () => { unsubDevice(); unsubLogs(); };
+    const qAI = query(collection(db, "ai_reports"), where("deviceId", "==", id));
+    const unsubAI = onSnapshot(qAI, (snapshot) => {
+      setAiHistory(snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }) as AIReport)
+        .sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0))
+        .slice(-10)
+      );
+    });
+    return () => { unsubDevice(); unsubLogs(); unsubAI(); };
   }, [id]);
 
   const handleSubmitStatus = async (status: "normal" | "warning" | "broken") => {
@@ -101,6 +113,15 @@ const DeviceDetails = () => {
         deviceName: device.name
       });
       setAiAnalysis(response.data);
+
+      // Save analysis to history
+      await addDoc(collection(db, "ai_reports"), {
+        deviceId: device.id,
+        tenantId: profile.tenantId,
+        riskPercentage: response.data.risk_percentage,
+        prediction: response.data.prediction_7_days,
+        timestamp: serverTimestamp()
+      });
     } catch (error) {
       console.error(error);
     } finally {
@@ -193,7 +214,7 @@ const DeviceDetails = () => {
           <div className="grid grid-cols-3 gap-3">
             <button 
               disabled={submitting}
-              onClick={() => handleSubmitStatus("normal")}
+              onClick={() => setConfirmStatus("normal")}
               className="flex flex-col items-center gap-2 p-3 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 transition-all border border-green-100"
             >
               <CheckCircle size={24} />
@@ -201,7 +222,7 @@ const DeviceDetails = () => {
             </button>
             <button 
               disabled={submitting}
-              onClick={() => handleSubmitStatus("warning")}
+              onClick={() => setConfirmStatus("warning")}
               className="flex flex-col items-center gap-2 p-3 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all border border-amber-100"
             >
               <AlertTriangle size={24} />
@@ -209,7 +230,7 @@ const DeviceDetails = () => {
             </button>
             <button 
               disabled={submitting}
-              onClick={() => handleSubmitStatus("broken")}
+              onClick={() => setConfirmStatus("broken")}
               className="flex flex-col items-center gap-2 p-3 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-all border border-red-100"
             >
               <X size={24} />
@@ -270,6 +291,55 @@ const DeviceDetails = () => {
 
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <TrendingUp size={20} className="text-blue-600" />
+          Xu hướng rủi ro (AI)
+        </h3>
+        {aiHistory.length > 0 ? (
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={aiHistory.map(h => ({
+                date: h.timestamp?.toDate().toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' }),
+                risk: h.riskPercentage
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="date" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  dy={10}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  domain={[0, 100]}
+                />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                />
+                <Bar dataKey="risk" radius={[4, 4, 0, 0]} barSize={32}>
+                  {aiHistory.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.riskPercentage > 70 ? '#ef4444' : entry.riskPercentage > 30 ? '#f59e0b' : '#3b82f6'} 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-[300px] flex flex-col items-center justify-center text-slate-400 text-center">
+            <TrendingUp size={32} className="mb-2 opacity-20" />
+            <p className="text-sm">Chưa có dữ liệu lịch sử phân tích.<br/>Hãy chạy AI để bắt đầu theo dõi xu hướng.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
           <History size={20} className="text-slate-500" />
           Lịch sử bảo trì
         </h3>
@@ -294,6 +364,67 @@ const DeviceDetails = () => {
           {logs.length === 0 && <p className="text-center text-slate-400 py-8">Chưa có lịch sử</p>}
         </div>
       </div>
+
+      <AnimatePresence>
+        {confirmStatus && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setConfirmStatus(null)}
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
+            >
+              <div className="p-6 text-center space-y-4">
+                <div className={cn(
+                  "w-16 h-16 mx-auto rounded-2xl flex items-center justify-center",
+                  confirmStatus === "normal" ? "bg-green-50 text-green-600" : 
+                  confirmStatus === "warning" ? "bg-amber-50 text-amber-600" : 
+                  "bg-red-50 text-red-600"
+                )}>
+                  {confirmStatus === "normal" ? <CheckCircle size={32} /> : 
+                   confirmStatus === "warning" ? <AlertTriangle size={32} /> : 
+                   <X size={32} />}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Xác nhận cập nhật</h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Bạn có chắc chắn muốn thay đổi trạng thái thiết bị thành 
+                    <span className="font-bold"> {
+                      confirmStatus === "normal" ? "Bình thường" : 
+                      confirmStatus === "warning" ? "Cảnh báo" : "Hư hỏng"
+                    }</span>?
+                  </p>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => setConfirmStatus(null)}
+                    className="flex-1 px-4 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all"
+                  >
+                    Hủy
+                  </button>
+                  <button 
+                    onClick={() => {
+                      handleSubmitStatus(confirmStatus);
+                      setConfirmStatus(null);
+                    }}
+                    className={cn(
+                      "flex-1 px-4 py-3 rounded-xl font-bold text-white transition-all shadow-lg",
+                      confirmStatus === "normal" ? "bg-green-600 hover:bg-green-700 shadow-green-100" : 
+                      confirmStatus === "warning" ? "bg-amber-600 hover:bg-amber-700 shadow-amber-100" : 
+                      "bg-red-600 hover:bg-red-700 shadow-red-100"
+                    )}
+                  >
+                    Xác nhận
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

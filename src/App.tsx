@@ -49,6 +49,15 @@ export interface Log {
   timestamp: any;
 }
 
+export interface AIReport {
+  id: string;
+  deviceId: string;
+  tenantId: string;
+  riskPercentage: number;
+  prediction: string;
+  timestamp: any;
+}
+
 // --- Auth Context ---
 interface AuthContextType {
   user: FirebaseUser | null;

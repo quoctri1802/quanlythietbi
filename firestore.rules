@@ -17,6 +17,9 @@ service cloud.firestore {
     // Collection: logs
     // Fields: deviceId (string), tenantId (string), userId (string), status (string: normal|warning|broken), note (string), timestamp (timestamp)
     //
+    // Collection: ai_reports
+    // Fields: deviceId (string), tenantId (string), riskPercentage (number), prediction (string), timestamp (timestamp)
+    //
     // ===============================================================
 
     // Helper Functions
@@ -81,6 +84,15 @@ service cloud.firestore {
              data.timestamp is timestamp;
     }
 
+    function isValidAIReport(data) {
+      return data.keys().hasAll(['deviceId', 'tenantId', 'riskPercentage', 'timestamp']) &&
+             data.deviceId is string &&
+             data.tenantId is string &&
+             data.riskPercentage is number &&
+             (!('prediction' in data) || (data.prediction is string && data.prediction.size() < 1000)) &&
+             data.timestamp is timestamp;
+    }
+
     // Rules
     match /tenants/{tenantId} {
       allow read: if isAuthenticated() && (isSuperAdmin() || isSameTenant(tenantId));
@@ -128,6 +140,12 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isSameTenant(resource.data.tenantId);
       allow create: if isAuthenticated() && isSameTenant(request.resource.data.tenantId) && isValidLog(request.resource.data);
       allow update, delete: if false; // Logs are immutable
+    }
+
+    match /ai_reports/{reportId} {
+      allow read: if isAuthenticated() && isSameTenant(resource.data.tenantId);
+      allow create: if isAuthenticated() && isSameTenant(request.resource.data.tenantId) && isValidAIReport(request.resource.data);
+      allow update, delete: if false; // Reports are immutable
     }
   }
 }
