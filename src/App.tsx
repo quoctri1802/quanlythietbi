@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp, query, collection, where, getDocs, deleteDoc } from "firebase/firestore";
-import { auth, db, signInWithGoogle, signOut } from "./firebase";
+import { auth, db, signInWithGoogle, signOut, loginWithEmail as firebaseLoginWithEmail } from "./firebase";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Activity } from "lucide-react";
 
@@ -64,6 +64,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   login: () => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -157,12 +158,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await signInWithGoogle();
   };
 
+  const loginWithEmail = async (email: string, pass: string) => {
+    await firebaseLoginWithEmail(email, pass);
+  };
+
   const logout = async () => {
     await signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, login, loginWithEmail, logout }}>
       {children}
     </AuthContext.Provider>
   );
