@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "Tenant": {
+      "title": "Tenant",
+      "description": "A hospital or organization using the platform.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the hospital." },
+        "address": { "type": "string", "description": "Address of the hospital." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user belonging to a tenant.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "tenantId": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "tenantId"]
+    },
+    "Device": {
+      "title": "Device",
+      "description": "A medical device belonging to a tenant.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "model": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "department": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "status": { "type": "string", "enum": ["normal", "warning", "broken"] },
+        "lastUpdate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "tenantId", "status"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "A status update log for a device.",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "userId": { "type": "string" },
+        "status": { "type": "string", "enum": ["normal", "warning", "broken"] },
+        "note": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deviceId", "tenantId", "userId", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/tenants/{tenantId}": {
+      "schema": "Tenant",
+      "description": "Hospital organizations."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles with tenant association."
+    },
+    "/devices/{deviceId}": {
+      "schema": "Device",
+      "description": "Medical devices."
+    },
+    "/logs/{logId}": {
+      "schema": "Log",
+      "description": "Device status history."
+    }
+  }
+}

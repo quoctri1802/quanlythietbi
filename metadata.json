@@ -1,0 +1,5 @@
+{
+  "name": "Hệ thống Quản lý Thiết bị Y tế Liên Chiểu",
+  "description": "Nền tảng SaaS quản lý thiết bị y tế đa bệnh viện với mã QR, AI phân tích rủi ro và cảnh báo Telegram.",
+  "requestFramePermissions": ["camera"]
+}

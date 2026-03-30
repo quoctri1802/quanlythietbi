@@ -1,0 +1,133 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: tenants
+    // Fields: name (string), address (string), createdAt (timestamp)
+    //
+    // Collection: users
+    // Fields: email (string), displayName (string), role (string: admin|staff), tenantId (string), photoURL (string), createdAt (timestamp)
+    //
+    // Collection: devices
+    // Fields: name (string), model (string), serialNumber (string), department (string), tenantId (string), status (string: normal|warning|broken), lastUpdate (timestamp), createdAt (timestamp)
+    //
+    // Collection: logs
+    // Fields: deviceId (string), tenantId (string), userId (string), status (string: normal|warning|broken), note (string), timestamp (timestamp)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Safely get user data from Firestore
+    function getUserData() {
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(path) ? get(path).data : null;
+    }
+
+    // Check if the current user is the system super admin (by email)
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email == "quoctri1802@gmail.com" && 
+             request.auth.token.email_verified == true;
+    }
+
+    // Check if the current user has the admin role in their profile
+    function hasAdminRole() {
+      let data = getUserData();
+      return data != null && data.role == 'admin';
+    }
+
+    // Combined admin check
+    function isAdmin() {
+      return isSuperAdmin() || hasAdminRole();
+    }
+
+    // Check if the current user belongs to a specific tenant
+    function isSameTenant(tenantId) {
+      let data = getUserData();
+      return data != null && data.tenantId == tenantId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role', 'tenantId']) &&
+             data.email is string &&
+             data.role in ['admin', 'staff'] &&
+             data.tenantId is string;
+    }
+
+    function isValidDevice(data) {
+      return data.keys().hasAll(['name', 'tenantId', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.tenantId is string &&
+             data.status in ['normal', 'warning', 'broken'];
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['deviceId', 'tenantId', 'userId', 'status', 'timestamp']) &&
+             data.deviceId is string &&
+             data.tenantId is string &&
+             data.userId == request.auth.uid &&
+             data.status in ['normal', 'warning', 'broken'] &&
+             data.timestamp is timestamp;
+    }
+
+    // Rules
+    match /tenants/{tenantId} {
+      allow read: if isAuthenticated() && (isSuperAdmin() || isSameTenant(tenantId));
+      allow create, update: if isAdmin();
+    }
+
+    match /users/{userId} {
+      // Users can always read their own profile by UID.
+      // They can also read a profile that matches their email (for claiming).
+      // Admins can read profiles in the same tenant.
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || 
+        request.auth.token.email == resource.data.email ||
+        (isAdmin() && getUserData().tenantId == resource.data.tenantId)
+      );
+      
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
+        isOwner(userId) || isAdmin()
+      );
+      
+      allow update: if isAuthenticated() && (
+        // Users can update their own non-sensitive info
+        (isOwner(userId) && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.tenantId == resource.data.tenantId) ||
+        // Admins can update anything in their tenant
+        (isAdmin() && getUserData().tenantId == resource.data.tenantId)
+      );
+
+      allow delete: if isAuthenticated() && (
+        isOwner(userId) || 
+        request.auth.token.email == resource.data.email ||
+        isAdmin()
+      );
+    }
+
+    match /devices/{deviceId} {
+      allow read: if isAuthenticated() && isSameTenant(resource.data.tenantId);
+      allow create: if isAuthenticated() && isAdmin() && isSameTenant(request.resource.data.tenantId) && isValidDevice(request.resource.data);
+      allow update: if isAuthenticated() && isSameTenant(resource.data.tenantId) && isValidDevice(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /logs/{logId} {
+      allow read: if isAuthenticated() && isSameTenant(resource.data.tenantId);
+      allow create: if isAuthenticated() && isSameTenant(request.resource.data.tenantId) && isValidLog(request.resource.data);
+      allow update, delete: if false; // Logs are immutable
+    }
+  }
+}
